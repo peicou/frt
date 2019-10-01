@@ -38,9 +38,9 @@ using namespace frt;
 #define FRT_ENV_ERROR 0
 #define FRT_ENV_BCM 1
 #define FRT_ENV_X11 2
-#define FRT_ENV_FBDEV 3
+#define FRT_ENV_KMSDRM 3
 #define FRT_ENV_VC4_NOX11 4
-#define FRT_ENV_GBM_DRM 5
+#define FRT_ENV_BCM_NOLIB 5
 
 static bool bcm_installed() {
 #if defined(__arm__) || defined(__aarch64__)
@@ -50,20 +50,44 @@ static bool bcm_installed() {
 #endif
 }
 
-static bool has_vc4() {
-	FILE *f = fopen("/proc/modules", "r");
+static bool find(const char *filename, bool (*pred)(const char *)) {
+	FILE *f = fopen(filename, "r");
 	if (!f)
 		return false;
 	char s[1024];
 	bool found = false;
 	while (fgets(s, sizeof(s), f)) {
-		if (!strncmp("vc4 ", s, 4)) {
+		if (pred(s)) {
 			found = true;
 			break;
 		}
 	}
 	fclose(f);
 	return found;
+}
+
+static bool pi_predicate(const char *line) {
+	return !strncmp("Hardware", line, 8) && strstr(line, "BCM2835");
+}
+
+static bool pi() {
+	return find("/proc/cpuinfo", pi_predicate);
+}
+
+static bool pi4_predicate(const char *line) {
+	return (bool)strstr(line, "Raspberry Pi 4");
+}
+
+static bool pi4() {
+	return find("/sys/firmware/devicetree/base/model", pi4_predicate);
+}
+
+static bool has_vc4_predicate(const char *line) {
+	return !strncmp("vc4 ", line, 4);
+}
+
+static bool has_vc4() {
+	return find("/proc/modules", has_vc4_predicate);
 }
 
 static bool has_x11() {
@@ -81,56 +105,80 @@ static bool has_x11() {
 	return (bool)display;
 }
 
-static bool has_gbm_drm()
+static int probe_environment() 
 {
-#if defined(__arm__) || defined(__aarch64__)
-	bool value = false;
-	if ((access("/usr/lib/arm-linux-gnueabihf/libgbm.so", R_OK) == 0) &&
-		(access("/usr/lib/arm-linux-gnueabihf/libdrm.so", R_OK) == 0))
+	if (pi() && !pi4()) 
 	{
-		value = true;
-	}
-	return value;
-#else
-	return false;
-#endif
-}
-
-static int probe_environment() {
-	if (bcm_installed()) {
-		printf("bcm_installed \n");
-		if (has_vc4()) {
+		if (has_vc4()) 
+		{
 			printf("   has_vc4 \n");
 			if (has_x11())
 			{
 			    printf("        has_x11 \n");
 				return FRT_ENV_X11;
 			}
-			else if (has_gbm_drm())
-			{
-				printf("        has_gbm_drm \n");
-				return FRT_ENV_GBM_DRM;
-			}
 			else
 			{
 			    printf("        vc4_no_X11 \n");
 				return FRT_ENV_VC4_NOX11;
 			}
+		} 
+		else 
+		{
+			if (bcm_installed())
+				return FRT_ENV_BCM;
+			else
+				return FRT_ENV_BCM_NOLIB;
 		}
-		return FRT_ENV_BCM;
-	} else {
-		printf("no _bcm\n");
+	} 
+	else 
+	{
+		printf("pi 4!\n");
 		if (has_x11())
 		{
 		    printf("   has_x11 \n");
 			return FRT_ENV_X11;
 		}
 		else
-		{
-			printf("   has_fbdev \n");
-			return FRT_ENV_FBDEV;
-		}
+			printf("    KMSDRM\n");
+			return FRT_ENV_KMSDRM;
 	}
+}
+
+static const char *next_module(char **state) {
+	char *s = *state;
+	if (!s)
+		return 0;
+	for (int i = 0; s[i]; i++)
+		if (s[i] == ',') {
+			s[i] = '\0';
+			*state = &s[i + 1];
+			return s;
+		}
+	*state = 0;
+	return s;
+}
+
+static bool probe_environment_override(Env *env) {
+	char *modules = getenv("FRT_MODULES");
+	if (!modules)
+		return false;
+	char *s = strdup(modules);
+	char *state = s;
+	const char *video = next_module(&state);
+	const char *keyboard = next_module(&state);
+	const char *mouse = next_module(&state);
+	const char *guard = next_module(&state);
+	if (guard || !mouse) {
+		printf("frt: expected FRT_MODULES=<video>,<keyboard>,<mouse>\n");
+		exit(1);
+	}
+	App *app = App::instance();
+	env->video = (Video *)app->probe(video);
+	env->keyboard = (Keyboard *)app->probe(keyboard);
+	env->mouse = (Mouse *)app->probe(mouse);
+	free(s);
+	return true;
 }
 
 namespace frt {
@@ -143,6 +191,8 @@ public:
 	void cleanup() {}
 	// EnvProbe
 	void probe_env(Env *env) {
+		if (probe_environment_override(env))
+			return;
 		App *app = App::instance();
 		switch (probe_environment()) {
 			case FRT_ENV_BCM:
@@ -155,26 +205,16 @@ public:
 				env->keyboard = (Keyboard *)app->probe("keyboard_x11");
 				env->mouse = (Mouse *)app->probe("mouse_x11");
 				break;
-			case FRT_ENV_FBDEV:
-				env->video = (Video *)app->probe("video_fbdev");
+			case FRT_ENV_KMSDRM:
+				env->video = (Video *)app->probe("video_kmsdrm");
 				env->keyboard = (Keyboard *)app->probe("keyboard_linux_input");
 				env->mouse = (Mouse *)app->probe("mouse_linux_input");
 				break;
 			case FRT_ENV_VC4_NOX11:
 				printf("frt: vc4 driver requires X11 on Pi 0-3.\n");
 				exit(1);
-				break;
-			case FRT_ENV_GBM_DRM:
-				printf("probing video...\n");
-				env->video = (Video *)app->probe("video_kmsdrm");
-				printf("video for gbm drm probed \n");
-				env->keyboard = (Keyboard *)app->probe("keyboard_linux_input");
-				printf("keyboard probed \n");
-				env->mouse = (Mouse *)app->probe("mouse_linux_input");
-				printf("mouse probed \n");
-				break;
-			default:
-				printf("frt: probe returned an invalid value \n");
+			case FRT_ENV_BCM_NOLIB:
+				printf("frt: no libbrcmEGL.so found.\n");
 				exit(1);
 		}
 	}
