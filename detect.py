@@ -123,11 +123,11 @@ def configure(env):
 			env.ParseConfig('pkg-config libpcre2-32 --cflags --libs')
 	# 3.1+
 	if version.major == 3 and version.minor >= 1:
-		if not check('builtin_mbedtls'):
+		if not check(env, 'builtin_mbedtls'):
 			env.Append(LIBS=['mbedtls', 'mbedcrypto', 'mbedx509'])
-		if not check('builtin_wslay'):
+		if not check(env, 'builtin_wslay'):
 			env.ParseConfig('pkg-config libwslay --cflags --libs')
-		if not check('builtin_miniupnpc'):
+		if not check(env, 'builtin_miniupnpc'):
 			env.Prepend(CPPPATH=["/usr/include/miniupnpc"])
 			env.Append(LIBS=["miniupnpc"])
 
@@ -173,6 +173,9 @@ def configure(env):
 	elif env['frt_arch'] == 'pi3':
 		env.Append(CCFLAGS=['-mcpu=cortex-a53', '-mfpu=neon-fp-armv8'])
 		env.extra_suffix += '.pi3'
+	elif env['frt_arch'] == 'pi4':
+		env.Append(CCFLAGS=['-mcpu=cortex-a72', '-mfpu=neon-fp-armv8', '-mtune=cortex-a72'])
+		env.extra_suffix += '.pi4'
 	elif env['frt_arch'] != 'pc':
 		env.extra_suffix += '.' + env['frt_arch']
 
@@ -193,7 +196,8 @@ def configure(env):
 	env.Append(FRT_MODULES=['dl/x11.gen.cpp', 'dl/egl.gen.cpp'])
 	if os.path.isfile('/opt/vc/include/bcm_host.h'):
 		env.Append(FRT_MODULES=['video_bcm.cpp', 'dl/bcm.gen.cpp'])
+		env.Append(FRT_MODULES=['video_kmsdrm.cpp', 'dl/gbm.gen.cpp', 'dl/drm.gen.cpp'])
 	env.Append(FRT_MODULES=['dl/gles2.gen.cpp'])
 	if version.major >= 3:
 		env.Append(FRT_MODULES=['dl/gles3.gen.cpp'])
-	env.Append(LIBS=['dl'])
+	env.Append(LIBS=['dl', 'drm', 'gbm'])

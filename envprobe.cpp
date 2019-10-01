@@ -40,6 +40,7 @@ using namespace frt;
 #define FRT_ENV_X11 2
 #define FRT_ENV_FBDEV 3
 #define FRT_ENV_VC4_NOX11 4
+#define FRT_ENV_GBM_DRM 5
 
 static bool bcm_installed() {
 #if defined(__arm__) || defined(__aarch64__)
@@ -80,20 +81,55 @@ static bool has_x11() {
 	return (bool)display;
 }
 
+static bool has_gbm_drm()
+{
+#if defined(__arm__) || defined(__aarch64__)
+	bool value = false;
+	if ((access("/usr/lib/arm-linux-gnueabihf/libgbm.so", R_OK) == 0) &&
+		(access("/usr/lib/arm-linux-gnueabihf/libdrm.so", R_OK) == 0))
+	{
+		value = true;
+	}
+	return value;
+#else
+	return false;
+#endif
+}
+
 static int probe_environment() {
 	if (bcm_installed()) {
+		printf("bcm_installed \n");
 		if (has_vc4()) {
+			printf("   has_vc4 \n");
 			if (has_x11())
+			{
+			    printf("        has_x11 \n");
 				return FRT_ENV_X11;
+			}
+			else if (has_gbm_drm())
+			{
+				printf("        has_gbm_drm \n");
+				return FRT_ENV_GBM_DRM;
+			}
 			else
+			{
+			    printf("        vc4_no_X11 \n");
 				return FRT_ENV_VC4_NOX11;
+			}
 		}
 		return FRT_ENV_BCM;
 	} else {
+		printf("no _bcm\n");
 		if (has_x11())
+		{
+		    printf("   has_x11 \n");
 			return FRT_ENV_X11;
+		}
 		else
+		{
+			printf("   has_fbdev \n");
 			return FRT_ENV_FBDEV;
+		}
 	}
 }
 
@@ -125,7 +161,20 @@ public:
 				env->mouse = (Mouse *)app->probe("mouse_linux_input");
 				break;
 			case FRT_ENV_VC4_NOX11:
-				printf("frt: vc4 driver requires X11.\n");
+				printf("frt: vc4 driver requires X11 on Pi 0-3.\n");
+				exit(1);
+				break;
+			case FRT_ENV_GBM_DRM:
+				printf("probing video...\n");
+				env->video = (Video *)app->probe("video_kmsdrm");
+				printf("video for gbm drm probed \n");
+				env->keyboard = (Keyboard *)app->probe("keyboard_linux_input");
+				printf("keyboard probed \n");
+				env->mouse = (Mouse *)app->probe("mouse_linux_input");
+				printf("mouse probed \n");
+				break;
+			default:
+				printf("frt: probe returned an invalid value \n");
 				exit(1);
 		}
 	}
