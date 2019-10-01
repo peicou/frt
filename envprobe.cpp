@@ -140,8 +140,10 @@ static int probe_environment()
 			return FRT_ENV_X11;
 		}
 		else
+		{
 			printf("    KMSDRM\n");
 			return FRT_ENV_KMSDRM;
+		}
 	}
 }
 
