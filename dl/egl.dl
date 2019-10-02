@@ -24,6 +24,7 @@
  */
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 typedef EGLContext (*___eglCreateContext___)(EGLDisplay dpy, EGLConfig config, EGLContext share_context, const EGLint *attrib_list);
 typedef EGLBoolean (*___eglChooseConfig___)(EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config);

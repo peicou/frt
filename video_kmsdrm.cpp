@@ -27,11 +27,8 @@
 #include "frt.h"
 
 #include <stdio.h>
-
+#include <string.h>
 #include <sys/time.h>
-
-#include "dl/gles2.gen.h"
-#include "bits/egl_base_context.h"
 
 #include "dl/gbm.gen.h"
 #include "dl/drm.gen.h"
@@ -39,6 +36,45 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+
+#include "bits/egl_base_context.h"
+
+// on pi, skip EGL/GLESv2 in /opt/vc/lib
+static const char *lib(const char *s) 
+{
+#if defined(__arm__) || defined(__aarch64__)
+	static char buf[64]; // large enough
+	strcpy(buf, "/opt/vc/lib/");
+	strcat(buf, s);
+	if (access(buf, R_OK) != 0)
+		return s;
+#if defined(__arm__)
+	strcpy(buf, "/usr/lib/arm-linux-gnueabihf/");
+#else
+	strcpy(buf, "/usr/lib/aarch64-linux-gnu/");
+#endif
+	strcat(buf, s);
+	return buf;
+#else // !pi
+	return s;
+#endif
+}
+
+#define FRT_DL_SKIP
+#if FRT_GLES_VERSION == 3
+#include "dl/gles3.gen.h"
+#else
+#include "dl/gles2.gen.h"
+#endif
+
+static bool frt_load_gles(int version) {
+#if FRT_GLES_VERSION == 3
+	return frt_load_gles3(lib("libGLESv2.so.2"));
+#else
+	return frt_load_gles2(lib("libGLESv2.so.2"));
+#endif
+    return false;
+}
 
 namespace frt {
 
@@ -101,13 +137,13 @@ private:
     }
 
 public:
-    void init()
+    void init(int version)
     {
         //printf("gbmDrm init \n");
         EGLBoolean result;
         EGLint num_config;
         EGLint count=0;
-
+#if FRT_GLES_VERSION == 2
         static EGLint attributes[] = {
                 EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
                 EGL_RED_SIZE, 8,
@@ -122,6 +158,22 @@ public:
                 EGL_CONTEXT_CLIENT_VERSION, 2,
                 EGL_NONE
                 };
+#else
+        static EGLint attributes[] = {
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_RED_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, 0,
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+                EGL_NONE
+                };
+
+        static const EGLint context_attribs[] = {
+                EGL_CONTEXT_CLIENT_VERSION, 3,
+                EGL_NONE
+                };
+#endif
         _device = open ("/dev/dri/card1", O_RDWR);
         if (_device < 0)
         {
@@ -207,52 +259,53 @@ public:
 
 class VideoKmsdrm : public Video, public ContextGL {
 private:
-    EGLKmsdrmContext egl;
-    bool initialized;
-    Vec2 screen_size;
-    bool vsync;
-    drmModeCrtc * crtc;
+    EGLKmsdrmContext _egl;
+    bool _initialized;
+    Vec2 _screen_size;
+    bool _vsync;
+    drmModeCrtc * _crtc;
+    int _EGLVersion = 0;
 
     void init_egl(Vec2 size) {
         //printf("kmsdrm init_egl\n");
-        egl.init();
-        egl.create_surface();
-        egl.make_current();
+        _egl.init(_EGLVersion);
+        _egl.create_surface();
+        _egl.make_current();
 
-        crtc = egl.getCrtc();
+        _crtc = _egl.getCrtc();
 
-        screen_size.x = get_window_width();
-        screen_size.y = get_window_height();
+        _screen_size.x = get_window_width();
+        _screen_size.y = get_window_height();
 
-        initialized = true;
+        _initialized = true;
     }
     void cleanup_egl() 
     {
-        if (!initialized)
+        if (!_initialized)
             return;
 
-        if (crtc == NULL)
+        if (_crtc == nullptr)
         return;
 
-        drmModeSetCrtc (egl.getDevice(), crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, egl.getConnector_id(), 1, &crtc->mode);
-        drmModeFreeCrtc (crtc);
-        if (egl.getPrevious_bo()) 
+        drmModeSetCrtc (_egl.getDevice(), _crtc->crtc_id, _crtc->buffer_id, _crtc->x, _crtc->y, _egl.getConnector_id(), 1, &_crtc->mode);
+        drmModeFreeCrtc (_crtc);
+        if (_egl.getPrevious_bo()) 
         {
-            drmModeRmFB (egl.getDevice(), egl.getPrevious_fb());
-            gbm_surface_release_buffer (egl.getGbm_surface(), egl.getPrevious_bo());
+            drmModeRmFB (_egl.getDevice(), _egl.getPrevious_fb());
+            gbm_surface_release_buffer (_egl.getGbm_surface(), _egl.getPrevious_bo());
         }
-        egl.destroy_surface();
-        gbm_surface_destroy (egl.getGbm_surface());
-        egl.cleanup();
-        gbm_device_destroy (egl.getGbm_device());
-        close (egl.getDevice());
-        initialized = false;
+        _egl.destroy_surface();
+        gbm_surface_destroy (_egl.getGbm_surface());
+        _egl.cleanup();
+        gbm_device_destroy (_egl.getGbm_device());
+        close (_egl.getDevice());
+        _initialized = false;
     }
 
 public:
     // Module
     VideoKmsdrm()
-        : initialized(false), vsync(true) {}
+        : _initialized(false), _vsync(true) {}
     const char *get_id() const { return "video_kmsdrm"; }
     bool probe() {
         //printf("   inside bgmDrm probe\n");
@@ -266,33 +319,28 @@ public:
             printf("failed to load libdrm\n");
             return false;
         }
-        if (!frt_load_gles2("libGLESv2.so.2"))
-        {
-            printf("failed to load GLES2\n");
-            return false;
-        }
-        if (!frt_load_egl("libEGL.so.1"))
+        if (!frt_load_egl(lib("libEGL.so.1")))
         {
             printf("failed to load EGL\n");
             return false;
-        }
-        
+		}
         return true;
     }
     void cleanup() {
         cleanup_egl();
     }
     // Video
-    Vec2 get_screen_size() const { return screen_size; }
+    Vec2 get_screen_size() const { return _screen_size; }
 
-    Vec2 get_view_size() const { return screen_size; }
+    Vec2 get_view_size() const { return _screen_size; }
 
-    ContextGL *create_the_gl_context(int version, Vec2 size) {
-        if (version != 2)
-            return 0;
-        screen_size = size;
-        return this;
-    }
+	ContextGL *create_the_gl_context(int version, Vec2 size) {
+		if (!frt_load_gles(version))
+			return 0;
+		_EGLVersion = version;
+		_screen_size = size;
+		return this;
+	}        
 
     bool provides_quit() { return false; }
 
@@ -307,9 +355,9 @@ public:
     int get_window_height() 
     { 
         int h = 0;
-        if (crtc != NULL)
+        if (_crtc != nullptr)
         {
-            h = (int)crtc->height;  
+            h = (int)_crtc->height;  
         }     
         return h;
     }
@@ -317,32 +365,32 @@ public:
     int get_window_width() 
     { 
         int w = 0;
-        if (crtc != NULL)
+        if (_crtc != nullptr)
         {
-            w = (int)crtc->width;  
+            w = (int)_crtc->width;  
         }     
         return w;
     }
 
     // ContextGL
     void release_current() {
-        egl.release_current();
+        _egl.release_current();
     }
     void make_current() {
-        egl.make_current();
+        _egl.make_current();
     }
     void swap_buffers() {
-        egl.swap_buffers();
+        _egl.swap_buffers();
     }
     bool initialize() {
-        init_egl(screen_size);
+        init_egl(_screen_size);
         return true;
     }
     void set_use_vsync(bool use) {
-        egl.swap_interval(use ? 1 : 0);
-        vsync = use;
+        _egl.swap_interval(use ? 1 : 0);
+        _vsync = use;
     }
-    bool is_using_vsync() const { return vsync; }
+    bool is_using_vsync() const { return _vsync; }
 };
 
 FRT_REGISTER(VideoKmsdrm)
