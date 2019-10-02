@@ -111,15 +111,12 @@ static int probe_environment()
 	{
 		if (has_vc4()) 
 		{
-			printf("   has_vc4 \n");
 			if (has_x11())
 			{
-			    printf("        has_x11 \n");
 				return FRT_ENV_X11;
 			}
 			else
 			{
-			    printf("        vc4_no_X11 \n");
 				return FRT_ENV_VC4_NOX11;
 			}
 		} 
@@ -133,15 +130,13 @@ static int probe_environment()
 	} 
 	else 
 	{
-		printf("pi 4!\n");
+		printf("hello pi 4!\n");
 		if (has_x11())
 		{
-		    printf("   has_x11 \n");
 			return FRT_ENV_X11;
 		}
 		else
 		{
-			printf("    KMSDRM\n");
 			return FRT_ENV_KMSDRM;
 		}
 	}

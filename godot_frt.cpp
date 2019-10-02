@@ -97,11 +97,9 @@ int main(int argc, char *argv[]) {
 	bool started = false;
 	App::instance()->parse_args(&argc, &argv);
 	probe_modules();
-	printf("modules probed\n");
 	if (!runnable)
 		goto quit_with_ret_code;
 	runnable->setup_env(&env);
-	printf("env set up\n");
 	if (Main::setup(argv[0], argc - 1, &argv[1]) != OK)
 		goto quit_with_ret_code;
 	if (!Main::start())

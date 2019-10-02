@@ -65,7 +65,7 @@ private:
 
     drmModeConnector * _find_connector (drmModeRes *resources) 
     {
-        printf("_find connector \n");
+        //printf("_find connector \n");
         for (int i=0; i<resources->count_connectors; i++) 
         {
             drmModeConnector *connector = drmModeGetConnector (_device, resources->connectors[i]);
@@ -78,22 +78,22 @@ private:
 
     drmModeEncoder * _find_encoder (drmModeRes *resources, drmModeConnector *connector) 
     {
-        printf("_find encoder \n");
+        //printf("_find encoder \n");
         if (connector->encoder_id) {return drmModeGetEncoder (_device, connector->encoder_id);}
         return NULL; // if no encoder found
     }
 
     int _match_config_to_visual(EGLDisplay egl_display, EGLint visual_id, EGLConfig *configs, int count) 
     {
-        printf("match config to visual \n");
+        //printf("match config to visual \n");
         EGLint id;
         for (int i = 0; i < count; ++i) 
         {
             if (!eglGetConfigAttrib(egl_display, configs[i], EGL_NATIVE_VISUAL_ID,&id)) continue;
             if (id == visual_id) 
             {
-                printf("   matched! %i \n",i);
-                printf("clearing eglGetError %i. 12288 is success fyi\n", eglGetError());
+                //printf("   matched! %i \n",i);
+                //printf("clearing eglGetError %i. 12288 is success fyi\n", eglGetError());
                 return i;
             }
         }
@@ -103,7 +103,7 @@ private:
 public:
     void init()
     {
-        printf("gbmDrm init \n");
+        //printf("gbmDrm init \n");
         EGLBoolean result;
         EGLint num_config;
         EGLint count=0;
@@ -122,20 +122,30 @@ public:
                 EGL_CONTEXT_CLIENT_VERSION, 2,
                 EGL_NONE
                 };
-            _device = open ("/dev/dri/card1", O_RDWR);
-        printf("card1 oppened\n");
-        _resources = drmModeGetResources (_device);
-        printf("resources gotten\n");
-        _connector = _find_connector (_resources);
-        printf("connector found \n");
-        if (_connector == NULL)
+        _device = open ("/dev/dri/card1", O_RDWR);
+        if (_device < 0)
         {
-            printf("connector is null. no fb found");
+            printf("failed to open card\n");
+            return;
+        } 
+        else
+        {
+            _resources = drmModeGetResources (_device);
+            if (_resources == nullptr)
+            {
+                printf("failed to get resources\n");
+                return;
+            }
+            _connector = _find_connector (_resources);
+            if (_connector == nullptr)
+            {
+                printf("failed to get connector. no fb?\n");
+                return;
+            }
         }
         _connector_id = _connector->connector_id;
         _mode_info = _connector->modes[0];
         _encoder = _find_encoder (_resources, _connector);
-        printf("encoder oppened\n");
         _crtc = drmModeGetCrtc (_device, _encoder->crtc_id);
         drmModeFreeEncoder (_encoder);
         drmModeFreeConnector (_connector);
@@ -152,9 +162,10 @@ public:
             printf("eglBindAPI failed.\n");
         
         eglGetConfigs(display, NULL, 0, &count);
-        printf("EGL received %i configs\n", count);
+        //printf("EGL received %i configs\n", count);
         result = eglChooseConfig (display, attributes, &_configs[0], count, &num_config);
-        result == EGL_FALSE ? printf("eglChooseConfig failed.\n") : printf("chooseConfigs returned %i configs.\n", num_config);
+        if (result == EGL_FALSE) 
+            printf("eglChooseConfig failed.\n");
 
         _config_index = _match_config_to_visual(display,GBM_FORMAT_XRGB8888,&_configs[0],num_config);
         context = eglCreateContext (display, _configs[_config_index], EGL_NO_CONTEXT, context_attribs);
@@ -203,7 +214,7 @@ private:
     drmModeCrtc * crtc;
 
     void init_egl(Vec2 size) {
-        printf("kmsdrm init_egl\n");
+        //printf("kmsdrm init_egl\n");
         egl.init();
         egl.create_surface();
         egl.make_current();
@@ -244,7 +255,7 @@ public:
         : initialized(false), vsync(true) {}
     const char *get_id() const { return "video_kmsdrm"; }
     bool probe() {
-        printf("   inside bgmDrm probe\n");
+        //printf("   inside bgmDrm probe\n");
         if (!frt_load_gbm("libgbm.so.1"))
         {
             printf("failed to load libgbm\n");
