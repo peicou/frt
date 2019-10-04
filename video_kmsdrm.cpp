@@ -80,31 +80,31 @@ namespace frt {
 
 class EGLKmsdrmContext : public EGLBaseContext {
 private:
-    int _device;
-    drmModeRes * _resources;
-    drmModeConnector * _connector;
-    uint32_t _connector_id;
-    drmModeEncoder * _encoder;
-    drmModeModeInfo  _mode_info;
-    drmModeCrtc * _crtc;
-    struct gbm_device * _gbm_device;
-    struct gbm_surface * _gbm_surface;
-    struct gbm_bo * _previous_bo = NULL;
-    uint32_t _previous_fb;    
-    struct gbm_bo * _bo;  
-    uint32_t _handle;
-    uint32_t _pitch;
-    uint32_t _fb;
-    uint64_t _modifier;
-    EGLConfig _configs[32];
-    int _config_index;
+    int device;
+    drmModeRes * resources;
+    drmModeConnector * connector;
+    uint32_t connector_id;
+    drmModeEncoder * encoder;
+    drmModeModeInfo  mode_info;
+    drmModeCrtc * crtc;
+    struct gbm_device * gbm_device;
+    struct gbm_surface * gbm_surface;
+    struct gbm_bo * previous_bo = NULL;
+    uint32_t previous_fb;    
+    struct gbm_bo * bo;  
+    uint32_t handle;
+    uint32_t pitch;
+    uint32_t fb;
+    uint64_t modifier;
+    EGLConfig configs[32];
+    int config_index;
 
-    drmModeConnector * _find_connector (drmModeRes *resources) 
+    drmModeConnector * find_connector (drmModeRes *resources) 
     {
-        //printf("_find connector \n");
+        //printf("find connector \n");
         for (int i=0; i<resources->count_connectors; i++) 
         {
-            drmModeConnector *connector = drmModeGetConnector (_device, resources->connectors[i]);
+            drmModeConnector *connector = drmModeGetConnector (device, resources->connectors[i]);
             if (connector->connection == DRM_MODE_CONNECTED) {return connector;}
             drmModeFreeConnector (connector);
         }
@@ -112,14 +112,14 @@ private:
         return NULL; // if no connector found
     }
 
-    drmModeEncoder * _find_encoder (drmModeRes *resources, drmModeConnector *connector) 
+    drmModeEncoder * find_encoder (drmModeRes *resources, drmModeConnector *connector) 
     {
         //printf("_find encoder \n");
-        if (connector->encoder_id) {return drmModeGetEncoder (_device, connector->encoder_id);}
+        if (connector->encoder_id) {return drmModeGetEncoder (device, connector->encoder_id);}
         return NULL; // if no encoder found
     }
 
-    int _match_config_to_visual(EGLDisplay egl_display, EGLint visual_id, EGLConfig *configs, int count) 
+    int match_config_to_visual(EGLDisplay egl_display, EGLint visual_id, EGLConfig *configs, int count) 
     {
         //printf("match config to visual \n");
         EGLint id;
@@ -174,37 +174,64 @@ public:
                 EGL_NONE
                 };
 #endif
-        _device = open ("/dev/dri/card1", O_RDWR);
-        if (_device < 0)
+        //! Try and get the correct card to use from the env
+        const char* s = getenv("FRT_KMSDRM_DEVICE");
+        if (s)
         {
-            printf("failed to open card\n");
+            printf(s);
+            if (access(s, R_OK) == 0)
+            {
+                device = open (s, O_RDWR);    
+                printf(" was used to open %i device\n", device);
+            }
+        }
+        //! No env var found, try card1 (rpi4)
+        else if (access("/dev/dri/card1", R_OK) == 0) 
+        { 
+            device = open ("/dev/dri/card1", O_RDWR);
+            printf(" trying to open card1 %i device\n", device);
+        } 
+        //! That didn't work, fall back to card0 (pc, pi3, others)
+        else if (access("/dev/dri/card0", R_OK) == 0)
+        {
+            device = open ("/dev/dri/card0", O_RDWR);
+            printf(" trying to open card0 %i device\n", device);
+        } 
+        else
+        {
+            printf("no /dev/dri/card found\n");
+            return;
+        }
+        if (device < 0)
+        {
+            printf("open returned an invalid device\n");
             return;
         } 
         else
         {
-            _resources = drmModeGetResources (_device);
-            if (_resources == nullptr)
+            resources = drmModeGetResources (device);
+            if (resources == 0)
             {
                 printf("failed to get resources\n");
                 return;
             }
-            _connector = _find_connector (_resources);
-            if (_connector == nullptr)
+            connector = find_connector (resources);
+            if (connector == 0)
             {
                 printf("failed to get connector. no fb?\n");
                 return;
             }
         }
-        _connector_id = _connector->connector_id;
-        _mode_info = _connector->modes[0];
-        _encoder = _find_encoder (_resources, _connector);
-        _crtc = drmModeGetCrtc (_device, _encoder->crtc_id);
-        drmModeFreeEncoder (_encoder);
-        drmModeFreeConnector (_connector);
-        drmModeFreeResources (_resources);
-        _gbm_device = gbm_create_device (_device);
-        _gbm_surface = gbm_surface_create (_gbm_device, _mode_info.hdisplay, _mode_info.vdisplay, GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT|GBM_BO_USE_RENDERING);
-        display = eglGetDisplay (_gbm_device);
+        connector_id = connector->connector_id;
+        mode_info = connector->modes[0];
+        encoder = find_encoder (resources, connector);
+        crtc = drmModeGetCrtc (device, encoder->crtc_id);
+        drmModeFreeEncoder (encoder);
+        drmModeFreeConnector (connector);
+        drmModeFreeResources (resources);
+        gbm_device = gbm_create_device (device);
+        gbm_surface = gbm_surface_create (gbm_device, mode_info.hdisplay, mode_info.vdisplay, GBM_FORMAT_XRGB8888, GBM_BO_USE_SCANOUT|GBM_BO_USE_RENDERING);
+        display = eglGetDisplay (gbm_device);
     
         result = eglInitialize (display, NULL ,NULL);
         if (result == EGL_FALSE)
@@ -215,18 +242,18 @@ public:
         
         eglGetConfigs(display, NULL, 0, &count);
         //printf("EGL received %i configs\n", count);
-        result = eglChooseConfig (display, attributes, &_configs[0], count, &num_config);
+        result = eglChooseConfig (display, attributes, &configs[0], count, &num_config);
         if (result == EGL_FALSE) 
             printf("eglChooseConfig failed.\n");
 
-        _config_index = _match_config_to_visual(display,GBM_FORMAT_XRGB8888,&_configs[0],num_config);
-        context = eglCreateContext (display, _configs[_config_index], EGL_NO_CONTEXT, context_attribs);
+        config_index = match_config_to_visual(display,GBM_FORMAT_XRGB8888,&configs[0],num_config);
+        context = eglCreateContext (display, configs[config_index], EGL_NO_CONTEXT, context_attribs);
         if (context == EGL_NO_CONTEXT)
             printf("eglCreateContext failed: %i.\n", eglGetError());
     }
 
     void create_surface() {
-        surface = eglCreateWindowSurface (display, _configs[_config_index], _gbm_surface, NULL);
+        surface = eglCreateWindowSurface (display, configs[config_index], gbm_surface, NULL);
         if (surface == EGL_NO_SURFACE)
             printf("video_kmsdrm: eglCreateWindowSurface failed., %i\n", eglGetError());
     }
@@ -234,78 +261,78 @@ public:
     void swap_buffers()
     {
         eglSwapBuffers (display, surface);
-        _bo = gbm_surface_lock_front_buffer (_gbm_surface);
-        _handle = gbm_bo_get_handle (_bo).u32;
-        _pitch = gbm_bo_get_stride (_bo);
-        drmModeAddFB (_device, _mode_info.hdisplay, _mode_info.vdisplay, 24, 32, _pitch, _handle, &_fb);
-        drmModeSetCrtc (_device, _crtc->crtc_id, _fb, 0, 0, &_connector_id, 1, &_mode_info);
-        if (_previous_bo) 
+        bo = gbm_surface_lock_front_buffer (gbm_surface);
+        handle = gbm_bo_get_handle (bo).u32;
+        pitch = gbm_bo_get_stride (bo);
+        drmModeAddFB (device, mode_info.hdisplay, mode_info.vdisplay, 24, 32, pitch, handle, &fb);
+        drmModeSetCrtc (device, crtc->crtc_id, fb, 0, 0, &connector_id, 1, &mode_info);
+        if (previous_bo != 0) 
         {
-            drmModeRmFB (_device, _previous_fb);
-            gbm_surface_release_buffer (_gbm_surface, _previous_bo);
+            drmModeRmFB (device, previous_fb);
+            gbm_surface_release_buffer (gbm_surface, previous_bo);
         }
-        _previous_bo = _bo;
-        _previous_fb = _fb;
+        previous_bo = bo;
+        previous_fb = fb;
     }
     //! getters
-    int getDevice() { return _device; }
-    drmModeCrtc * getCrtc() { return _crtc; }
-    uint32_t * getConnector_id() { return &_connector_id; }
-    struct gbm_bo * getPrevious_bo() {return _previous_bo; } 
-    uint32_t getPrevious_fb() { return _previous_fb; }
-    struct gbm_surface * getGbm_surface() { return _gbm_surface; }
-    struct gbm_device * getGbm_device() { return _gbm_device; }
+    int getDevice() { return device; }
+    drmModeCrtc * getCrtc() { return crtc; }
+    uint32_t * getConnector_id() { return &connector_id; }
+    struct gbm_bo * getPrevious_bo() {return previous_bo; } 
+    uint32_t getPrevious_fb() { return previous_fb; }
+    struct gbm_surface * getGbm_surface() { return gbm_surface; }
+    struct gbm_device * getGbm_device() { return gbm_device; }
 };
 
 class VideoKmsdrm : public Video, public ContextGL {
 private:
-    EGLKmsdrmContext _egl;
-    bool _initialized;
-    Vec2 _screen_size;
-    bool _vsync;
-    drmModeCrtc * _crtc;
-    int _EGLVersion = 0;
+    EGLKmsdrmContext egl;
+    bool initialized;
+    Vec2 screen_size;
+    bool vsync;
+    drmModeCrtc * crtc;
+    int EGLVersion = 0;
 
     void init_egl(Vec2 size) {
         //printf("kmsdrm init_egl\n");
-        _egl.init(_EGLVersion);
-        _egl.create_surface();
-        _egl.make_current();
+        egl.init (EGLVersion);
+        egl.create_surface();
+        egl.make_current();
 
-        _crtc = _egl.getCrtc();
+        crtc = egl.getCrtc();
 
-        _screen_size.x = get_window_width();
-        _screen_size.y = get_window_height();
+        screen_size.x = get_window_width();
+        screen_size.y = get_window_height();
 
-        _initialized = true;
+        initialized = true;
     }
     void cleanup_egl() 
     {
-        if (!_initialized)
+        if (!initialized)
             return;
 
-        if (_crtc == nullptr)
+        if (!crtc)
         return;
 
-        drmModeSetCrtc (_egl.getDevice(), _crtc->crtc_id, _crtc->buffer_id, _crtc->x, _crtc->y, _egl.getConnector_id(), 1, &_crtc->mode);
-        drmModeFreeCrtc (_crtc);
-        if (_egl.getPrevious_bo()) 
+        drmModeSetCrtc  (egl.getDevice(), crtc->crtc_id, crtc->buffer_id, crtc->x, crtc->y, egl.getConnector_id(), 1, &crtc->mode);
+        drmModeFreeCrtc (crtc);
+        if  (egl.getPrevious_bo()) 
         {
-            drmModeRmFB (_egl.getDevice(), _egl.getPrevious_fb());
-            gbm_surface_release_buffer (_egl.getGbm_surface(), _egl.getPrevious_bo());
+            drmModeRmFB  (egl.getDevice(), egl.getPrevious_fb());
+            gbm_surface_release_buffer  (egl.getGbm_surface(), egl.getPrevious_bo());
         }
-        _egl.destroy_surface();
-        gbm_surface_destroy (_egl.getGbm_surface());
-        _egl.cleanup();
-        gbm_device_destroy (_egl.getGbm_device());
-        close (_egl.getDevice());
-        _initialized = false;
+        egl.destroy_surface();
+        gbm_surface_destroy  (egl.getGbm_surface());
+        egl.cleanup();
+        gbm_device_destroy  (egl.getGbm_device());
+        close  (egl.getDevice());
+        initialized = false;
     }
 
 public:
     // Module
     VideoKmsdrm()
-        : _initialized(false), _vsync(true) {}
+        : initialized(false), vsync(true) {}
     const char *get_id() const { return "video_kmsdrm"; }
     bool probe() {
         //printf("   inside bgmDrm probe\n");
@@ -330,15 +357,15 @@ public:
         cleanup_egl();
     }
     // Video
-    Vec2 get_screen_size() const { return _screen_size; }
+    Vec2 get_screen_size() const { return screen_size; }
 
-    Vec2 get_view_size() const { return _screen_size; }
+    Vec2 get_view_size() const { return screen_size; }
 
 	ContextGL *create_the_gl_context(int version, Vec2 size) {
 		if (!frt_load_gles(version))
 			return 0;
-		_EGLVersion = version;
-		_screen_size = size;
+		EGLVersion = version;
+		screen_size = size;
 		return this;
 	}        
 
@@ -355,9 +382,9 @@ public:
     int get_window_height() 
     { 
         int h = 0;
-        if (_crtc != nullptr)
+        if (crtc)
         {
-            h = (int)_crtc->height;  
+            h = (int)crtc->height;  
         }     
         return h;
     }
@@ -365,32 +392,32 @@ public:
     int get_window_width() 
     { 
         int w = 0;
-        if (_crtc != nullptr)
+        if (crtc)
         {
-            w = (int)_crtc->width;  
+            w = (int)crtc->width;  
         }     
         return w;
     }
 
     // ContextGL
     void release_current() {
-        _egl.release_current();
+        egl.release_current();
     }
     void make_current() {
-        _egl.make_current();
+        egl.make_current();
     }
     void swap_buffers() {
-        _egl.swap_buffers();
+        egl.swap_buffers();
     }
     bool initialize() {
-        init_egl(_screen_size);
+        init_egl (screen_size);
         return true;
     }
     void set_use_vsync(bool use) {
-        _egl.swap_interval(use ? 1 : 0);
-        _vsync = use;
+        egl.swap_interval(use ? 1 : 0);
+        vsync = use;
     }
-    bool is_using_vsync() const { return _vsync; }
+    bool is_using_vsync() const { return vsync; }
 };
 
 FRT_REGISTER(VideoKmsdrm)
