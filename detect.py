@@ -197,7 +197,6 @@ def configure(env):
 	#if os.path.isfile('/opt/vc/include/bcm_host.h'):
 		#env.Append(FRT_MODULES=['video_bcm.cpp', 'dl/bcm.gen.cpp'])
 	env.Append(FRT_MODULES=['video_kmsdrm.cpp', 'dl/gbm.gen.cpp', 'dl/drm.gen.cpp'])
-	env.Append(LIBS=['drm', 'gbm'])
 	env.Append(FRT_MODULES=['dl/gles2.gen.cpp'])
 	if version.major >= 3:
 		env.Append(FRT_MODULES=['dl/gles3.gen.cpp'])
