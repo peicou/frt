@@ -40,8 +40,7 @@
 #include "bits/egl_base_context.h"
 
 // on pi, skip EGL/GLESv2 in /opt/vc/lib
-static const char *lib(const char *s) 
-{
+static const char *lib(const char *s) {
 #if defined(__arm__) || defined(__aarch64__)
 	static char buf[64]; // large enough
 	strcpy(buf, "/opt/vc/lib/");
@@ -61,19 +60,17 @@ static const char *lib(const char *s)
 }
 
 #define FRT_DL_SKIP
+#include "dl/gles2.gen.h"
 #if FRT_GLES_VERSION == 3
 #include "dl/gles3.gen.h"
-#else
-#include "dl/gles2.gen.h"
 #endif
 
 static bool frt_load_gles(int version) {
 #if FRT_GLES_VERSION == 3
-	return frt_load_gles3(lib("libGLESv2.so.2"));
-#else
-	return frt_load_gles2(lib("libGLESv2.so.2"));
+	if (version == 3)
+		return frt_load_gles3(lib("libGLESv2.so.2"));
 #endif
-    return false;
+	return frt_load_gles2(lib("libGLESv2.so.2"));
 }
 
 namespace frt {
@@ -144,36 +141,28 @@ public:
         EGLint num_config;
         EGLint count=0;
 #if FRT_GLES_VERSION == 2
-        static EGLint attributes[] = {
-                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-                EGL_RED_SIZE, 8,
-                EGL_GREEN_SIZE, 8,
-                EGL_BLUE_SIZE, 8,
-                EGL_ALPHA_SIZE, 0,
-                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-                EGL_NONE
-                };
 
         static const EGLint context_attribs[] = {
                 EGL_CONTEXT_CLIENT_VERSION, 2,
                 EGL_NONE
                 };
 #else
-        static EGLint attributes[] = {
-                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-                EGL_RED_SIZE, 8,
-                EGL_GREEN_SIZE, 8,
-                EGL_BLUE_SIZE, 8,
-                EGL_ALPHA_SIZE, 0,
-                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
-                EGL_NONE
-                };
-
         static const EGLint context_attribs[] = {
                 EGL_CONTEXT_CLIENT_VERSION, 3,
                 EGL_NONE
                 };
 #endif
+
+        static EGLint attributes[] = {
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_RED_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8,
+                EGL_ALPHA_SIZE, EGL_DONT_CARE,
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+                EGL_NONE
+                };
+
         //! Try and get the correct card to use from the env
         const char* s = getenv("FRT_KMSDRM_DEVICE");
         if (s)
