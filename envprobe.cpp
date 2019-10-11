@@ -130,7 +130,6 @@ static int probe_environment()
 	} 
 	else 
 	{
-		printf("hello pi 4!\n");
 		if (has_x11())
 		{
 			return FRT_ENV_X11;
