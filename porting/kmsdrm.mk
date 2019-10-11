@@ -7,7 +7,7 @@
 
 # Done:
 #   $ make restore
- 
+
 OBJS += \
 	test_video.o \
 	video_kmsdrm.o \
