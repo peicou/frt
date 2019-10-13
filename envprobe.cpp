@@ -105,39 +105,24 @@ static bool has_x11() {
 	return (bool)display;
 }
 
-static int probe_environment()
-{
-	if (pi() && !pi4())
-	{
-		if (has_vc4())
-		{
+static int probe_environment() {
+	if (pi() && !pi4()) {
+		if (has_vc4()) {
 			if (has_x11())
-			{
 				return FRT_ENV_X11;
-			}
 			else
-			{
 				return FRT_ENV_VC4_NOX11;
-			}
-		}
-		else
-		{
+		} else {
 			if (bcm_installed())
 				return FRT_ENV_BCM;
 			else
 				return FRT_ENV_BCM_NOLIB;
 		}
-	}
-	else
-	{
+	} else {
 		if (has_x11())
-		{
 			return FRT_ENV_X11;
-		}
 		else
-		{
 			return FRT_ENV_KMSDRM;
-		}
 	}
 }
 

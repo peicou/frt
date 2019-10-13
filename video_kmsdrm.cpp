@@ -170,12 +170,12 @@ public:
 		}
 		else
 		{
-			fatal("no /dev/dri/card found");
+			//! no /dev/dri/card found
 			return;
 		}
 		if (device < 0)
 		{
-			fatal("open returned an invalid device");
+			//! open returned an invalid device
 			return;
 		}
 		else
@@ -183,13 +183,13 @@ public:
 			resources = drmModeGetResources (device);
 			if (resources == 0)
 			{
-				fatal("failed to get resources");
+				//! failed to get resources
 				return;
 			}
 			connector = find_connector (resources);
 			if (connector == 0)
 			{
-				fatal("failed to get connector. no fb?");
+				//! failed to get connector. no fb?
 				return;
 			}
 		}
@@ -205,27 +205,35 @@ public:
 		display = eglGetDisplay (gbm_device);
 
 		result = eglInitialize (display, NULL ,NULL);
-		if (result == EGL_FALSE)
-			fatal("eglInitialize failed.");
+		if (result == EGL_FALSE) {
+			//! eglInitialize failed.
+			return;
+		}
 		result = eglBindAPI (EGL_OPENGL_ES_API);
-		if (result == EGL_FALSE)
-			fatal("eglBindAPI failed.");
+		if (result == EGL_FALSE) {
+			//! eglBindAPI failed.
+			return;
+		}
 
 		eglGetConfigs(display, NULL, 0, &count);
 		result = eglChooseConfig (display, attributes, &configs[0], count, &num_config);
-		if (result == EGL_FALSE)
-			fatal("eglChooseConfig failed.");
+		if (result == EGL_FALSE) {
+			//! eglChooseConfig failed
+			return;
+		}
 
 		config_index = match_config_to_visual(display,GBM_FORMAT_XRGB8888,&configs[0],num_config);
 		context = eglCreateContext (display, configs[config_index], EGL_NO_CONTEXT, context_attribs);
-		if (context == EGL_NO_CONTEXT)
-			fatal("eglCreateContext failed: %i.", eglGetError());
+		if (context == EGL_NO_CONTEXT) {
+			//! eglCreateContext failed
+			return;
+		}
 	}
 
 	void create_surface() {
 		surface = eglCreateWindowSurface (display, configs[config_index], gbm_surface, NULL);
-		if (surface == EGL_NO_SURFACE)
-			fatal("video_kmsdrm: eglCreateWindowSurface failed., %i", eglGetError());
+		//! if (surface == EGL_NO_SURFACE)
+			//! video_kmsdrm: eglCreateWindowSurface failed
 	}
 
 	void swap_buffers()
@@ -306,17 +314,17 @@ public:
 	bool probe() {
 		if (!frt_load_gbm("libgbm.so.1"))
 		{
-			fatal("failed to load libgbm");
+			//! failed to load libgbm
 			return false;
 		}
 		if (!frt_load_drm("libdrm.so.2"))
 		{
-			fatal("failed to load libdrm");
+			//! failed to load libdrm
 			return false;
 		}
 		if (!frt_load_egl(lib("libEGL.so.1")))
 		{
-			fatal("failed to load EGL");
+			//! failed to load EGL
 			return false;
 		}
 		return true;
