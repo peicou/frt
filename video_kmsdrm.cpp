@@ -170,12 +170,12 @@ public:
 		}
 		else
 		{
-			//! no /dev/dri/card found
+			fatal("no /dev/dri/card found");
 			return;
 		}
 		if (device < 0)
 		{
-			//! open returned an invalid device
+			fatal("open returned an invalid device");
 			return;
 		}
 		else
@@ -183,13 +183,13 @@ public:
 			resources = drmModeGetResources (device);
 			if (resources == 0)
 			{
-				//! failed to get resources
+				fatal("failed to get resources");
 				return;
 			}
 			connector = find_connector (resources);
 			if (connector == 0)
 			{
-				//! failed to get connector. no fb?
+				fatal("failed to get connector. no fb?");
 				return;
 			}
 		}
@@ -206,34 +206,35 @@ public:
 
 		result = eglInitialize (display, NULL ,NULL);
 		if (result == EGL_FALSE) {
-			//! eglInitialize failed.
+			fatal("eglInitialize failed.");
 			return;
 		}
 		result = eglBindAPI (EGL_OPENGL_ES_API);
 		if (result == EGL_FALSE) {
-			//! eglBindAPI failed.
+			fatal("eglBindAPI failed.");
 			return;
 		}
 
 		eglGetConfigs(display, NULL, 0, &count);
 		result = eglChooseConfig (display, attributes, &configs[0], count, &num_config);
 		if (result == EGL_FALSE) {
-			//! eglChooseConfig failed
+			fatal("eglChooseConfig failed.");
 			return;
 		}
 
 		config_index = match_config_to_visual(display,GBM_FORMAT_XRGB8888,&configs[0],num_config);
 		context = eglCreateContext (display, configs[config_index], EGL_NO_CONTEXT, context_attribs);
 		if (context == EGL_NO_CONTEXT) {
-			//! eglCreateContext failed
+			fatal("eglCreateContext failed: %i.", eglGetError());
 			return;
 		}
 	}
 
 	void create_surface() {
 		surface = eglCreateWindowSurface (display, configs[config_index], gbm_surface, NULL);
-		//! if (surface == EGL_NO_SURFACE)
-			//! video_kmsdrm: eglCreateWindowSurface failed
+		if (surface == EGL_NO_SURFACE) {
+			fatal("video_kmsdrm: eglCreateWindowSurface failed., %i", eglGetError());
+		}
 	}
 
 	void swap_buffers()
