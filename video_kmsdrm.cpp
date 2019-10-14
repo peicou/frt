@@ -170,12 +170,12 @@ public:
 		}
 		else
 		{
-			fatal("no /dev/dri/card found");
+			//! no /dev/dri/card found
 			return;
 		}
 		if (device < 0)
 		{
-			fatal("open returned an invalid device");
+			//! open returned an invalid device
 			return;
 		}
 		else
@@ -183,13 +183,13 @@ public:
 			resources = drmModeGetResources (device);
 			if (resources == 0)
 			{
-				fatal("failed to get resources");
+				//! failed to get resources
 				return;
 			}
 			connector = find_connector (resources);
 			if (connector == 0)
 			{
-				fatal("failed to get connector. no fb?");
+				//! failed to get connector. no fb?
 				return;
 			}
 		}
